@@ -1,0 +1,42 @@
+# Build directories
+build/
+cmake-build-*/
+.cache/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Compiled files
+*.o
+*.so
+*.a
+*.dylib
+*.dll
+*.exe
+
+# CMake files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+compile_commands.json
+
+# Model files (large binary files)
+models/*.bin
+models/*.pt
+
+# Audio test files
+*.wav
+*.mp3
+*.flac
+
+# macOS
+.DS_Store
+
+# Backup files
+*.bak
+*.backup
