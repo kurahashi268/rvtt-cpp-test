@@ -1,10 +1,13 @@
 # Build directories
 build/
+build-*/
 cmake-build-*/
 .cache/
 
-# IDE files
-.vscode/
+# IDE files (keep .vscode for project settings)
+.vscode/launch.json
+.vscode/c_cpp_properties.json
+.vscode/.cmaketools.json
 .idea/
 *.swp
 *.swo

@@ -99,9 +99,7 @@ void Transcriber::processLoop() {
         if (!audio_chunk.empty() && running_) {
             std::string text = transcribe(audio_chunk);
             if (!text.empty() && running_) {
-                std::cout << "\r\033[K"; // Clear line
-                std::cout << "📝 " << text << std::endl;
-                std::cout << "🎤 Listening..." << std::flush;
+                std::cout << text << std::endl;
             }
         }
     }

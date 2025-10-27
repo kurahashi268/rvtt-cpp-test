@@ -1,0 +1,26 @@
+[
+    {
+        "name": "LLVM-MinGW Cross-Compile",
+        "toolchainFile": "${workspaceFolder}/cmake/llvm-mingw-toolchain.cmake",
+        "preferredGenerator": {
+            "name": "Ninja"
+        },
+        "environmentVariables": {
+            "CMAKE_BUILD_TYPE": "MinSizeRel"
+        }
+    },
+    {
+        "name": "LLVM-MinGW Native (Windows)",
+        "compilers": {
+            "C": "clang",
+            "CXX": "clang++"
+        },
+        "preferredGenerator": {
+            "name": "Ninja"
+        },
+        "environmentVariables": {
+            "CMAKE_BUILD_TYPE": "MinSizeRel"
+        }
+    }
+]
+

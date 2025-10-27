@@ -1,18 +1,38 @@
 #include "audio_capture.h"
 #include "transcriber.h"
 #include <iostream>
-#include <signal.h>
 #include <atomic>
 #include <thread>
 #include <chrono>
 
+// Cross-platform signal handling
+#ifdef _WIN32
+    #include <windows.h>
+    #include <signal.h>
+#else
+    #include <signal.h>
+#endif
+
 std::atomic<bool> g_running(true);
 
+#ifdef _WIN32
+// Windows console handler
+BOOL WINAPI consoleHandler(DWORD signal) {
+    if (signal == CTRL_C_EVENT || signal == CTRL_BREAK_EVENT || signal == CTRL_CLOSE_EVENT) {
+        std::cout << "\nShutting down..." << std::endl;
+        g_running = false;
+        return TRUE;
+    }
+    return FALSE;
+}
+#else
+// Unix signal handler
 void signalHandler(int signal) {
     (void)signal;
     std::cout << "\nShutting down..." << std::endl;
     g_running = false;
 }
+#endif
 
 void printUsage(const char* program_name) {
     std::cout << "Usage: " << program_name << " <model_path> [language]" << std::endl;
@@ -32,9 +52,15 @@ int main(int argc, char* argv[]) {
     std::string model_path = argv[1];
     std::string language = (argc >= 3) ? argv[2] : "ja";
 
-    // Set up signal handler
+    // Set up signal handler (cross-platform)
+#ifdef _WIN32
+    // Enable UTF-8 output on Windows console
+    SetConsoleOutputCP(CP_UTF8);
+    SetConsoleCtrlHandler(consoleHandler, TRUE);
+#else
     signal(SIGINT, signalHandler);
     signal(SIGTERM, signalHandler);
+#endif
 
     std::cout << "=== Real-time Voice Transcription Tool ===" << std::endl;
     std::cout << "Model: " << model_path << std::endl;

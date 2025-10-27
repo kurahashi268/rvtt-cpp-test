@@ -1,0 +1,35 @@
+{
+    "cmake.configureOnOpen": false,
+    "cmake.generator": "Ninja",
+    "cmake.buildDirectory": "${workspaceFolder}/build-windows",
+    
+    // Use CMake presets
+    "cmake.useCMakePresets": "always",
+    
+    // Default preset for Windows builds
+    "cmake.defaultConfigurePreset": "windows-x64-native",
+    
+    // C++ IntelliSense settings
+    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+    "C_Cpp.default.compileCommands": "${workspaceFolder}/build-windows/compile_commands.json",
+    
+    // Exclude build directories from file watcher
+    "files.watcherExclude": {
+        "**/build/**": true,
+        "**/build-*/**": true,
+        "**/.cache/**": true
+    },
+    
+    // File associations
+    "files.associations": {
+        "*.h": "cpp",
+        "*.cpp": "cpp",
+        "CMakeLists.txt": "cmake"
+    },
+    
+    // Terminal settings for Windows cross-compilation
+    "terminal.integrated.env.linux": {
+        "LLVM_MINGW_ROOT": "${env:LLVM_MINGW_ROOT}"
+    }
+}
+
