@@ -1,14 +1,18 @@
 #include "transcriber.h"
 #include <iostream>
 #include <chrono>
+#include <cmath>
 
 Transcriber::Transcriber(const std::string& model_path, const std::string& language)
     : model_path_(model_path)
     , language_(language)
     , ctx_(nullptr)
     , running_(false)
+    , processing_(false)
     , buffer_size_threshold_(16000 * 3) // 3 seconds of audio at 16kHz
-    , sample_rate_(16000) {
+    , sample_rate_(16000)
+    , console_output_(true)
+    , silence_threshold_(1e-4) { // RMS energy threshold for silence detection (0.0001)
 }
 
 Transcriber::~Transcriber() {
@@ -49,6 +53,7 @@ void Transcriber::start() {
         return;
     }
 
+    processing_ = false;
     running_ = true;
     process_thread_ = std::thread(&Transcriber::processLoop, this);
     
@@ -66,8 +71,22 @@ void Transcriber::stop() {
     if (process_thread_.joinable()) {
         process_thread_.join();
     }
+
+    processing_ = false;
     
-    std::cout << "Transcriber stopped" << std::endl;
+    if (console_output_) {
+        std::cout << "Transcriber stopped" << std::endl;
+    }
+}
+
+void Transcriber::setTranscriptionCallback(TranscriptionCallback callback) {
+    std::lock_guard<std::mutex> lock(callback_mutex_);
+    transcription_callback_ = callback;
+}
+
+bool Transcriber::hasPendingAudio() const {
+    std::lock_guard<std::mutex> lock(audio_mutex_);
+    return !audio_buffer_.empty();
 }
 
 void Transcriber::processLoop() {
@@ -84,25 +103,70 @@ void Transcriber::processLoop() {
             
             // Exit immediately if stopping - don't process remaining audio
             if (!running_) {
+                processing_ = false;
                 break;
             }
             
             if (audio_buffer_.size() >= buffer_size_threshold_) {
                 audio_chunk = std::move(audio_buffer_);
                 audio_buffer_.clear();
+                processing_ = true;
             } else {
                 continue;
             }
         }
         
+        if (!running_) {
+            processing_ = false;
+            break;
+        }
+        
         // Double-check we're still running before expensive transcription
         if (!audio_chunk.empty() && running_) {
+            // Check for silence to avoid hallucination from Whisper
+            if (isSilence(audio_chunk)) {
+                processing_ = false;
+                continue;
+            }
+            
             std::string text = transcribe(audio_chunk);
             if (!text.empty() && running_) {
-                std::cout << text << std::endl;
+                // Output to console if enabled
+                if (console_output_) {
+                    std::cout << text << std::endl;
+                }
+                
+                // Call callback if set (for IPC mode)
+                {
+                    std::lock_guard<std::mutex> lock(callback_mutex_);
+                    if (transcription_callback_) {
+                        transcription_callback_(text, false);
+                    }
+                }
             }
         }
+
+        processing_ = false;
     }
+
+    processing_ = false;
+}
+
+bool Transcriber::isSilence(const std::vector<float>& audio_data) const {
+    if (audio_data.empty()) {
+        return true;
+    }
+    
+    // Calculate RMS (Root Mean Square) energy
+    double sum_squares = 0.0;
+    for (float sample : audio_data) {
+        sum_squares += sample * sample;
+    }
+    
+    double rms = std::sqrt(sum_squares / audio_data.size());
+    
+    // Return true if RMS energy is below threshold
+    return rms < silence_threshold_;
 }
 
 std::string Transcriber::transcribe(const std::vector<float>& audio_data) {
@@ -144,6 +208,27 @@ std::string Transcriber::transcribe(const std::vector<float>& audio_data) {
         const char* text = whisper_full_get_segment_text(ctx_, i);
         if (text) {
             result += text;
+        }
+    }
+
+    // Filter out common hallucination phrases
+    if (!result.empty()) {
+        // Common false positives that appear with silent/near-silent input
+        std::string lower_result = result;
+        // Convert to lowercase for comparison (basic, works for ASCII)
+        for (char& c : lower_result) {
+            if (c >= 'A' && c <= 'Z') {
+                c += 32;
+            }
+        }
+        
+        // List of common hallucinated phrases (Japanese)
+        if (lower_result.find("ありがとう") != std::string::npos ||
+            lower_result.find("ご視聴") != std::string::npos ||
+            lower_result.find("ございました") != std::string::npos) {
+            // These phrases often appear as hallucinations from Whisper on silence
+            // Return empty to filter them out
+            return "";
         }
     }
 

@@ -1,0 +1,101 @@
+<Window x:Class="RVTTSampleApp.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="RVTT - Real-Time Voice Transcription" Height="600" Width="800"
+        Closing="Window_Closing">
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Configuration Section -->
+        <GroupBox Header="Configuration" Grid.Row="0" Margin="0,0,0,10">
+            <Grid Margin="5">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="120"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Executable Path -->
+                <Label Content="Executable Path:" Grid.Row="0" Grid.Column="0" VerticalAlignment="Center"/>
+                <TextBox x:Name="txtExecutablePath" Grid.Row="0" Grid.Column="1" Margin="5" 
+                         VerticalAlignment="Center" Text="./rvtt.exe"/>
+                <Button Content="Browse..." Grid.Row="0" Grid.Column="2" Width="80" Margin="5"
+                        Click="BrowseExecutable_Click"/>
+
+                <!-- Model Path -->
+                <Label Content="Model Path:" Grid.Row="1" Grid.Column="0" VerticalAlignment="Center"/>
+                <TextBox x:Name="txtModelPath" Grid.Row="1" Grid.Column="1" Margin="5" 
+                         VerticalAlignment="Center" Text="./models/ggml-base.bin"/>
+                <Button Content="Browse..." Grid.Row="1" Grid.Column="2" Width="80" Margin="5"
+                        Click="BrowseModel_Click"/>
+
+                <!-- Language -->
+                <Label Content="Language:" Grid.Row="2" Grid.Column="0" VerticalAlignment="Center"/>
+                <ComboBox x:Name="cmbLanguage" Grid.Row="2" Grid.Column="1" Margin="5" 
+                          VerticalAlignment="Center" SelectedIndex="0">
+                    <ComboBoxItem Content="Japanese (ja)"/>
+                    <ComboBoxItem Content="English (en)"/>
+                    <ComboBoxItem Content="Chinese (zh)"/>
+                    <ComboBoxItem Content="Korean (ko)"/>
+                    <ComboBoxItem Content="Spanish (es)"/>
+                    <ComboBoxItem Content="French (fr)"/>
+                    <ComboBoxItem Content="German (de)"/>
+                </ComboBox>
+            </Grid>
+        </GroupBox>
+
+        <!-- Control Buttons -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10">
+            <Button x:Name="btnInitialize" Content="Initialize" Width="100" Height="35" Margin="0,0,10,0"
+                    Click="Initialize_Click"/>
+            <Button x:Name="btnStartListening" Content="Start Listening" Width="120" Height="35" Margin="0,0,10,0"
+                    Click="StartListening_Click" IsEnabled="False"/>
+            <Button x:Name="btnStopListening" Content="Stop Listening" Width="120" Height="35" Margin="0,0,10,0"
+                    Click="StopListening_Click" IsEnabled="False"/>
+            <Button x:Name="btnClear" Content="Clear" Width="100" Height="35" Margin="0,0,10,0"
+                    Click="Clear_Click"/>
+        </StackPanel>
+
+        <!-- Status Bar -->
+        <Border Grid.Row="2" BorderBrush="#CCCCCC" BorderThickness="1" Background="#F0F0F0" 
+                Padding="5" Margin="0,0,0,10" CornerRadius="3">
+            <StackPanel Orientation="Horizontal">
+                <Label Content="Status:" FontWeight="Bold"/>
+                <Label x:Name="lblStatus" Content="Not Initialized" Foreground="Gray"/>
+                <Label Content="  |  Listening:" FontWeight="Bold" Margin="20,0,0,0"/>
+                <Ellipse x:Name="ellipseListening" Width="12" Height="12" Fill="Gray" Margin="5,0,0,0"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Transcription Display -->
+        <GroupBox Header="Transcription" Grid.Row="3" Margin="0,0,0,10">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <TextBox x:Name="txtTranscription" TextWrapping="Wrap" AcceptsReturn="True" 
+                         IsReadOnly="True" BorderThickness="0" Background="Transparent"
+                         FontSize="14" Padding="5"/>
+            </ScrollViewer>
+        </GroupBox>
+
+        <!-- Info Bar -->
+        <Border Grid.Row="4" BorderBrush="#CCCCCC" BorderThickness="1" Background="#F9F9F9" 
+                Padding="5" CornerRadius="3">
+            <TextBlock x:Name="txtInfo" TextWrapping="Wrap" FontSize="11" Foreground="#666666"
+                       Text="Click 'Initialize' to start the transcription engine, then use 'Start Listening' to begin voice recognition."/>
+        </Border>
+    </Grid>
+</Window>
+

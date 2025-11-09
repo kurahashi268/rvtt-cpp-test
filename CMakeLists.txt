@@ -39,8 +39,13 @@ endif()
 find_package(Threads REQUIRED)
 
 # PortAudio for audio capture
-find_library(PORTAUDIO_LIBRARY NAMES portaudio libportaudio REQUIRED)
-find_path(PORTAUDIO_INCLUDE_DIR portaudio.h REQUIRED)
+if(WIN32)
+    find_library(PORTAUDIO_LIBRARY portaudio PATHS "C:/portaudio/install/lib")
+    find_path(PORTAUDIO_INCLUDE_DIR portaudio.h PATHS "C:/portaudio/install/include")
+else()
+    find_library(PORTAUDIO_LIBRARY NAMES portaudio libportaudio REQUIRED)
+    find_path(PORTAUDIO_INCLUDE_DIR portaudio.h REQUIRED)
+endif()
 
 # Whisper.cpp integration
 set(WHISPER_CPP_DIR ${CMAKE_SOURCE_DIR}/core)
@@ -64,6 +69,7 @@ set(SOURCES
     src/main.cpp
     src/audio_capture.cpp
     src/transcriber.cpp
+    src/ipc_manager.cpp
 )
 
 # Create executable
@@ -75,6 +81,11 @@ target_link_libraries(rvtt
     ${PORTAUDIO_LIBRARY}
     Threads::Threads
 )
+
+# Linux-specific libraries for POSIX shared memory
+if(NOT WIN32)
+    target_link_libraries(rvtt rt)
+endif()
 
 # Windows-specific settings for smallest binary
 if(WINDOWS_BUILD)
