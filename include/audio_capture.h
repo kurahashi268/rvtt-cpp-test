@@ -4,7 +4,6 @@
 #include <functional>
 #include <vector>
 #include <atomic>
-#include <thread>
 #include <mutex>
 
 class AudioCapture {
@@ -39,5 +38,6 @@ private:
     std::atomic<bool> running_;
     AudioCallback callback_;
     std::mutex callback_mutex_;
+    bool pa_initialized_;
 };
 

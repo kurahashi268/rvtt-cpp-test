@@ -8,6 +8,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <functional>
+#include <chrono>
 
 // Forward declaration
 class IPCManager;
@@ -29,6 +30,8 @@ public:
     
     // Enable/disable console output
     void setConsoleOutput(bool enable) { console_output_ = enable; }
+
+    void setInitialPrompt(const std::string& prompt, bool carry_initial_prompt);
 
     bool isRunning() const { return running_; }
     
@@ -65,5 +68,10 @@ private:
     
     // Silence detection threshold
     double silence_threshold_;
+    std::chrono::milliseconds flush_timeout_;
+    std::chrono::steady_clock::time_point last_audio_time_;
+
+    std::string initial_prompt_;
+    bool carry_initial_prompt_;
 };
 

@@ -57,6 +57,7 @@ int runTestMode(const std::string& model_path, const std::string& language) {
 
     // Initialize transcriber
     Transcriber transcriber(model_path, language);
+    transcriber.setInitialPrompt("This recording is a medical consultation!", true);
     if (!transcriber.initialize()) {
         std::cerr << "Failed to initialize transcriber" << std::endl;
         return 1;
@@ -117,6 +118,7 @@ int runMainMode(const std::string& model_path, const std::string& language) {
     // Initialize transcriber
     Transcriber transcriber(model_path, language);
     transcriber.setConsoleOutput(false); // Disable console output in main mode
+    transcriber.setInitialPrompt("This recording is a medical consultation!", true);
     
     if (!transcriber.initialize()) {
         std::cerr << "Failed to initialize transcriber" << std::endl;

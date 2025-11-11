@@ -12,7 +12,11 @@ Transcriber::Transcriber(const std::string& model_path, const std::string& langu
     , buffer_size_threshold_(16000 * 3) // 3 seconds of audio at 16kHz
     , sample_rate_(16000)
     , console_output_(true)
-    , silence_threshold_(1e-4) { // RMS energy threshold for silence detection (0.0001)
+    , silence_threshold_(1e-4)  // RMS energy threshold for silence detection (0.0001)
+    , flush_timeout_(std::chrono::milliseconds(600))
+    , last_audio_time_(std::chrono::steady_clock::now())
+    , initial_prompt_("")
+    , carry_initial_prompt_(false) {
 }
 
 Transcriber::~Transcriber() {
@@ -41,6 +45,7 @@ bool Transcriber::initialize() {
 void Transcriber::addAudio(const std::vector<float>& audio_data) {
     std::lock_guard<std::mutex> lock(audio_mutex_);
     audio_buffer_.insert(audio_buffer_.end(), audio_data.begin(), audio_data.end());
+    last_audio_time_ = std::chrono::steady_clock::now();
     
     // Notify processing thread if buffer is large enough
     if (audio_buffer_.size() >= buffer_size_threshold_) {
@@ -84,45 +89,60 @@ void Transcriber::setTranscriptionCallback(TranscriptionCallback callback) {
     transcription_callback_ = callback;
 }
 
+void Transcriber::setInitialPrompt(const std::string& prompt, bool carry_initial_prompt) {
+    initial_prompt_ = prompt;
+    carry_initial_prompt_ = carry_initial_prompt;
+}
+
 bool Transcriber::hasPendingAudio() const {
     std::lock_guard<std::mutex> lock(audio_mutex_);
     return !audio_buffer_.empty();
 }
 
 void Transcriber::processLoop() {
-    while (running_) {
+    while (true) {
         std::vector<float> audio_chunk;
+        bool forced_flush = false;
         
         {
             std::unique_lock<std::mutex> lock(audio_mutex_);
             
             // Wait for enough audio data or timeout
-            audio_cv_.wait_for(lock, std::chrono::seconds(2), [this] {
+            audio_cv_.wait_for(lock, std::chrono::milliseconds(200), [this] {
                 return audio_buffer_.size() >= buffer_size_threshold_ || !running_;
             });
-            
-            // Exit immediately if stopping - don't process remaining audio
-            if (!running_) {
+
+            bool running_state = running_;
+            bool has_audio = !audio_buffer_.empty();
+            auto now = std::chrono::steady_clock::now();
+            bool flush_due_to_timeout = has_audio && (now - last_audio_time_ >= flush_timeout_);
+
+            if (!running_state && !has_audio) {
                 processing_ = false;
                 break;
             }
-            
-            if (audio_buffer_.size() >= buffer_size_threshold_) {
+
+            if (has_audio && (audio_buffer_.size() >= buffer_size_threshold_ || flush_due_to_timeout || (!running_state && has_audio))) {
                 audio_chunk = std::move(audio_buffer_);
                 audio_buffer_.clear();
+                forced_flush = flush_due_to_timeout || (!running_state);
                 processing_ = true;
             } else {
+                if (!running_state) {
+                    processing_ = false;
+                    break;
+                }
                 continue;
             }
         }
         
-        if (!running_) {
+        if (!running_ && !forced_flush) {
             processing_ = false;
             break;
         }
         
         // Double-check we're still running before expensive transcription
-        if (!audio_chunk.empty() && running_) {
+        if (!audio_chunk.empty() && (running_ || forced_flush)) {
             // Check for silence to avoid hallucination from Whisper
             if (isSilence(audio_chunk)) {
                 processing_ = false;
@@ -130,7 +150,7 @@ void Transcriber::processLoop() {
             }
             
             std::string text = transcribe(audio_chunk);
-            if (!text.empty() && running_) {
+            if (!text.empty()) {
                 // Output to console if enabled
                 if (console_output_) {
                     std::cout << text << std::endl;
@@ -140,7 +160,8 @@ void Transcriber::processLoop() {
                 {
                     std::lock_guard<std::mutex> lock(callback_mutex_);
                     if (transcription_callback_) {
-                        transcription_callback_(text, false);
+                        const bool is_final = forced_flush || !running_;
+                        transcription_callback_(text, is_final);
                     }
                 }
             }
@@ -191,6 +212,11 @@ std::string Transcriber::transcribe(const std::vector<float>& audio_data) {
     // Suppress non-speech tokens
     wparams.suppress_blank = true;
     wparams.suppress_nst = true;
+
+    if (!initial_prompt_.empty()) {
+        wparams.initial_prompt = initial_prompt_.c_str();
+        wparams.carry_initial_prompt = carry_initial_prompt_;
+    }
 
     // Process audio
     int ret = whisper_full(ctx_, wparams, audio_data.data(), audio_data.size());
