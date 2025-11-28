@@ -1,11 +1,13 @@
 #include "audio_capture.h"
 #include "transcriber.h"
 #include "ipc_manager.h"
+#include "logger.h"
 #include <iostream>
 #include <atomic>
 #include <thread>
 #include <chrono>
 #include <cstring>
+#include <cstdlib>
 
 // Cross-platform signal handling
 #ifdef _WIN32
@@ -67,8 +69,11 @@ int runTestMode(const std::string& model_path, const std::string& language) {
     AudioCapture audio_capture(16000, 512);
     if (!audio_capture.initialize()) {
         std::cerr << "Failed to initialize audio capture" << std::endl;
+        Logger::log("Audio capture initialization failed");
+        Logger::shutdown();
         return 1;
     }
+    Logger::log("Audio capture initialized");
 
     // Start transcription processing
     transcriber.start();
@@ -108,12 +113,23 @@ int runMainMode(const std::string& model_path, const std::string& language) {
     // (C# application doesn't need to see it)
 #endif
 
+    const char* log_override = std::getenv("RVTT_IPC_LOG_FILE");
+    std::string log_path = (log_override && *log_override) ? log_override : "rvtt_ipc_debug.log";
+    if (!Logger::initialize(log_path)) {
+        std::cerr << "Warning: Failed to open IPC log file at " << log_path << std::endl;
+    } else {
+        Logger::log("Starting IPC main mode. Model=" + model_path + ", Language=" + language);
+    }
+
     // Initialize IPC
     IPCManager ipc_manager("RVTTSharedMemory");
     if (!ipc_manager.initialize()) {
         std::cerr << "Failed to initialize IPC" << std::endl;
+        Logger::log("IPC initialization failed");
+        Logger::shutdown();
         return 1;
     }
+    Logger::log("IPC resources initialized");
 
     // Initialize transcriber
     Transcriber transcriber(model_path, language);
@@ -122,12 +138,21 @@ int runMainMode(const std::string& model_path, const std::string& language) {
     
     if (!transcriber.initialize()) {
         std::cerr << "Failed to initialize transcriber" << std::endl;
+        Logger::log("Transcriber initialization failed");
+        Logger::shutdown();
         return 1;
     }
+    Logger::log("Transcriber initialized");
 
     // Set up transcription callback to write to shared memory
     transcriber.setTranscriptionCallback([&ipc_manager](const std::string& text, bool is_final) {
-        ipc_manager.writeTranscription(text, is_final);
+        if (!text.empty()) {
+            Logger::log("Transcription callback len=" + std::to_string(text.size()) +
+                        ", final=" + (is_final ? std::string("true") : std::string("false")));
+        }
+        if (!ipc_manager.writeTranscription(text, is_final)) {
+            Logger::log("writeTranscription skipped or failed");
+        }
     });
 
     // Initialize audio capture
@@ -139,6 +164,7 @@ int runMainMode(const std::string& model_path, const std::string& language) {
 
     // Signal that we're ready
     ipc_manager.signalEvent(IPCEvent::READY);
+    Logger::log("Signaled READY event");
 
     bool listening = false;
     bool transcriber_started = false;
@@ -149,19 +175,24 @@ int runMainMode(const std::string& model_path, const std::string& language) {
     while (g_running) {
         // Check for quit event (highest priority)
         if (ipc_manager.checkEvent(IPCEvent::QUIT)) {
+            Logger::log("Received QUIT event");
             break;
         }
 
         // Check for stop listen event (process before START_LISTEN to avoid conflicts)
         if (ipc_manager.checkEvent(IPCEvent::STOP_LISTEN)) {
             if (listening) {
-                audio_capture.stop();
+                Logger::log("Received STOP_LISTEN event - blocking audio input");
+                audio_capture.setInputBlocked(true);
                 listening = false;
                 // Start checking for completion after stopping
                 if (transcriber_started && transcriber.isRunning()) {
                     waiting_for_completion = true;
                     completion_check_start = std::chrono::steady_clock::now();
+                    Logger::log("Waiting for pending transcription to finish");
                 }
+            } else {
+                Logger::log("STOP_LISTEN received but already idle");
             }
         }
         
@@ -175,6 +206,7 @@ int runMainMode(const std::string& model_path, const std::string& language) {
                     // Signal that transcription is complete
                     ipc_manager.signalEvent(IPCEvent::TRANSCRIPTION_COMPLETE);
                     waiting_for_completion = false;
+                    Logger::log("Signaled TRANSCRIPTION_COMPLETE event");
                 }
             } else {
                 // Reset timer if there's still audio queued or being processed
@@ -184,6 +216,7 @@ int runMainMode(const std::string& model_path, const std::string& language) {
 
         // Check for start listen event
         if (ipc_manager.checkEvent(IPCEvent::START_LISTEN)) {
+            Logger::log("Received START_LISTEN event");
             if (!listening) {
                 // Reset completion waiting state when starting again
                 waiting_for_completion = false;
@@ -192,16 +225,28 @@ int runMainMode(const std::string& model_path, const std::string& language) {
                 if (!transcriber_started) {
                     transcriber.start();
                     transcriber_started = true;
+                    Logger::log("Transcriber thread started");
                 }
 
-                // Start audio capture
-                bool started = audio_capture.start([&transcriber](const std::vector<float>& audio_data) {
-                    transcriber.addAudio(audio_data);
-                });
+                if (!audio_capture.isRunning()) {
+                    // Start audio capture
+                    bool started = audio_capture.start([&transcriber](const std::vector<float>& audio_data) {
+                        transcriber.addAudio(audio_data);
+                    });
 
-                if (started) {
+                    if (started) {
+                        listening = true;
+                        Logger::log("Audio capture started in response to START_LISTEN");
+                    } else {
+                        Logger::log("Audio capture failed to start after START_LISTEN");
+                    }
+                } else {
+                    audio_capture.setInputBlocked(false);
                     listening = true;
+                    Logger::log("Audio capture resumed after START_LISTEN");
                 }
+            } else {
+                Logger::log("START_LISTEN received but already listening");
             }
         }
 
@@ -210,19 +255,25 @@ int runMainMode(const std::string& model_path, const std::string& language) {
     }
 
     // Cleanup
-    if (listening) {
+    if (audio_capture.isRunning()) {
         audio_capture.stop();
+        Logger::log("Audio capture stopped");
     }
     
     if (transcriber_started) {
         transcriber.stop();
+        Logger::log("Transcriber stopped");
     }
 
     // Signal that we've terminated
     ipc_manager.signalEvent(IPCEvent::TERMINATED);
+    Logger::log("Signaled TERMINATED event");
     
     // Small delay to ensure the event is received
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    Logger::log("IPC main mode exiting");
+    Logger::shutdown();
 
     return 0;
 }

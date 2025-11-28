@@ -7,6 +7,7 @@ AudioCapture::AudioCapture(int sample_rate, int frames_per_buffer)
     , sample_rate_(sample_rate)
     , frames_per_buffer_(frames_per_buffer)
     , running_(false)
+    , input_blocked_(false)
     , pa_initialized_(false) {
 }
 
@@ -96,6 +97,7 @@ bool AudioCapture::start(AudioCallback callback) {
     }
 
     running_ = true;
+    input_blocked_ = false;
     std::cout << "Audio capture started" << std::endl;
     return true;
 }
@@ -105,8 +107,6 @@ void AudioCapture::stop() {
         return;
     }
 
-    running_ = false;
-
     if (stream_) {
         PaError err = Pa_StopStream(stream_);
         if (err != paNoError) {
@@ -114,7 +114,14 @@ void AudioCapture::stop() {
         }
     }
 
+    running_ = false;
+    input_blocked_ = false;
+
     std::cout << "Audio capture stopped" << std::endl;
+}
+
+void AudioCapture::setInputBlocked(bool blocked) {
+    input_blocked_.store(blocked);
 }
 
 int AudioCapture::paCallback(
@@ -140,7 +147,7 @@ int AudioCapture::paCallback(
 }
 
 void AudioCapture::processAudio(const float* input, unsigned long frame_count) {
-    if (!running_) {
+    if (!running_ || input_blocked_.load()) {
         return;
     }
 

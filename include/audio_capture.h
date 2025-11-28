@@ -16,6 +16,8 @@ public:
     bool initialize();
     bool start(AudioCallback callback);
     void stop();
+    void setInputBlocked(bool blocked);
+    bool isInputBlocked() const { return input_blocked_.load(); }
     bool isRunning() const { return running_; }
 
     int getSampleRate() const { return sample_rate_; }
@@ -36,6 +38,7 @@ private:
     int sample_rate_;
     int frames_per_buffer_;
     std::atomic<bool> running_;
+    std::atomic<bool> input_blocked_;
     AudioCallback callback_;
     std::mutex callback_mutex_;
     bool pa_initialized_;

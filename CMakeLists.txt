@@ -70,6 +70,7 @@ set(SOURCES
     src/audio_capture.cpp
     src/transcriber.cpp
     src/ipc_manager.cpp
+    src/logger.cpp
 )
 
 # Create executable

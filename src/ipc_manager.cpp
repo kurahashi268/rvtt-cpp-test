@@ -3,10 +3,25 @@
 #include <ctime>
 #include <cerrno>
 #include <cstring>
+#include "logger.h"
 
 #ifdef _WIN32
     #include <chrono>
 #endif
+
+namespace {
+const char* eventName(IPCEvent event) {
+    switch (event) {
+        case IPCEvent::READY: return "READY";
+        case IPCEvent::START_LISTEN: return "START_LISTEN";
+        case IPCEvent::STOP_LISTEN: return "STOP_LISTEN";
+        case IPCEvent::TRANSCRIPTION_COMPLETE: return "TRANSCRIPTION_COMPLETE";
+        case IPCEvent::QUIT: return "QUIT";
+        case IPCEvent::TERMINATED: return "TERMINATED";
+        default: return "UNKNOWN";
+    }
+}
+}
 
 IPCManager::IPCManager(const std::string& name)
     : name_(name)
@@ -96,6 +111,7 @@ bool IPCManager::initialize() {
     ResetEvent(event_terminated_);
     
     std::cout << "IPC initialized (Windows)" << std::endl;
+    Logger::log("IPCManager initialized using Windows shared memory/events");
     return true;
     
 #else
@@ -166,6 +182,7 @@ bool IPCManager::initialize() {
     }
     
     std::cout << "IPC initialized (POSIX)" << std::endl;
+    Logger::log("IPCManager initialized using POSIX shared memory/semaphores");
     return true;
 #endif
 }
@@ -200,16 +217,24 @@ bool IPCManager::signalEvent(IPCEvent event) {
 #ifdef _WIN32
     HANDLE handle = getEventHandle(event);
     if (handle == nullptr) {
+        Logger::log(std::string("signalEvent failed: handle null for ") + eventName(event));
         return false;
     }
-    return SetEvent(handle) != 0;
+    bool ok = SetEvent(handle) != 0;
 #else
     sem_t* sem = getEventSemaphore(event);
     if (sem == SEM_FAILED) {
+        Logger::log(std::string("signalEvent failed: semaphore invalid for ") + eventName(event));
         return false;
     }
-    return sem_post(sem) == 0;
+    bool ok = sem_post(sem) == 0;
 #endif
+    if (ok) {
+        Logger::log(std::string("Signaled IPC event: ") + eventName(event));
+    } else {
+        Logger::log(std::string("Failed to signal IPC event: ") + eventName(event));
+    }
+    return ok;
 }
 
 bool IPCManager::waitForEvent(IPCEvent event, int timeout_ms) {
@@ -292,11 +317,13 @@ bool IPCManager::checkEvent(IPCEvent event) {
 
 bool IPCManager::writeTranscription(const std::string& text, bool is_final) {
     if (shm_data_ == nullptr) {
+        Logger::log("writeTranscription failed: shared memory not initialized");
         return false;
     }
     
     // Skip empty text to avoid unnecessary updates
     if (text.empty()) {
+        Logger::log("writeTranscription skipped: empty text");
         return false;
     }
     
@@ -322,6 +349,10 @@ bool IPCManager::writeTranscription(const std::string& text, bool is_final) {
     shm_data_->is_final = is_final;
     shm_data_->sequence_number = ++sequence_number_;
     
+    Logger::log("Shared memory updated (seq=" + std::to_string(shm_data_->sequence_number) +
+                ", final=" + std::string(is_final ? "true" : "false") +
+                ", len=" + std::to_string(copy_len) + ")");
+
     return true;
 }
 
